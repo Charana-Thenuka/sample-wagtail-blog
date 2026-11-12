@@ -1,10 +1,16 @@
+from django import forms
 from django.db import models
 
-# Add these:
-from modelcluster.fields import ParentalKey
+# New imports added for ClusterTaggableManager, TaggedItemBase
+
+from modelcluster.fields import ParentalKey, ParentalManyToManyField
+from modelcluster.contrib.taggit import ClusterTaggableManager
+from taggit.models import TaggedItemBase
 
 from wagtail.models import Page, Orderable
 from wagtail.fields import RichTextField
+from wagtail.admin.panels import FieldPanel, MultiFieldPanel
+from wagtail.snippets.models import register_snippet
 
 
 class BlogIndexPage(Page):
@@ -17,10 +23,19 @@ class BlogIndexPage(Page):
         context["blogpages"] = blogpages
         return context
 
+class BlogPageTag(TaggedItemBase):
+    content_object = ParentalKey(
+        "BlogPage", related_name="tagged_items", on_delete=models.CASCADE
+)
+
 class BlogPage(Page):
     date = models.DateField("Post date")
     intro = models.CharField(max_length=250)
     body = RichTextField(blank=True)
+    authors = ParentalManyToManyField("blog.Author", blank=True)
+
+    # add tags
+    tags = ClusterTaggableManager(through=BlogPageTag, blank=True)
 
     # Add the main_image method:
     def main_image(self):
@@ -30,7 +45,18 @@ class BlogPage(Page):
         else:
             return None
 
-    content_panels = Page.content_panels + ["date", "intro", "body", "gallery_images"]
+    content_panels = Page.content_panels + [
+        MultiFieldPanel(
+            [
+                "date", 
+                FieldPanel("authors", widget=forms.CheckboxSelectMultiple),   
+                "tags",
+            ], 
+            heading="Blog information"),
+        "intro", 
+        "body", 
+        "gallery_images"
+        ]
 
 class BlogPageGalleryImage(Orderable):
     page = ParentalKey(
@@ -42,3 +68,26 @@ class BlogPageGalleryImage(Orderable):
     caption = models.CharField(blank=True, max_length=250)
 
     panels = ["image", "caption"]
+
+# Auther - model
+@register_snippet
+class Author(models.Model):
+    name = models.CharField(max_length=255)
+    author_image = models.ForeignKey(
+        "wagtailimages.Image",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    panels = [
+        FieldPanel("name"),
+        FieldPanel("author_image"),
+    ]
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        verbose_name_plural = "Authors"
